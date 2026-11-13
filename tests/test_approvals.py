@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from storage.database import init_db
+from tests.isolated_test_case import IsolatedTestCase
 from security.approvals import (
     create_approval_request,
     get_approval,
@@ -18,9 +18,9 @@ from security.approvals import (
 )
 from core.permission_manager import PermissionManager, RiskLevel
 
-class TestApprovalsAndPermissions(unittest.TestCase):
+class TestApprovalsAndPermissions(IsolatedTestCase):
     def setUp(self):
-        init_db()
+        super().setUp()
 
     def test_risk_classification(self):
         """Operations are classified accurately into risk categories."""

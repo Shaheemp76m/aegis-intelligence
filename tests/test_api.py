@@ -13,20 +13,21 @@ from http.server import ThreadingHTTPServer
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from config import Config
-from storage.database import init_db
+from tests.isolated_test_case import IsolatedTestCase
 from server import AegisRequestHandler
 
 TEST_PORT = 8799
 TEST_TOKEN = "test_secret_token_12345"
 
-class TestApiEndpoints(unittest.TestCase):
+class TestApiEndpoints(IsolatedTestCase):
     @classmethod
     def setUpClass(cls):
+        super().setUpClass()
         # Configure test environment
         Config.HOST = "127.0.0.1"
         Config.PORT = TEST_PORT
         Config.API_TOKEN = TEST_TOKEN
-        init_db()
+        Config.TOKEN_FILE.write_text(TEST_TOKEN, encoding="utf-8")
 
         cls.server = ThreadingHTTPServer((Config.HOST, TEST_PORT), AegisRequestHandler)
         cls.server_thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
@@ -37,6 +38,7 @@ class TestApiEndpoints(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.shutdown()
         cls.server.server_close()
+        super().tearDownClass()
 
     def _request(self, path: str, method: str = "GET", body: dict = None, headers: dict = None):
         url = f"{self.base_url}{path}"

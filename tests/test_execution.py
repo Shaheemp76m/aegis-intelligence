@@ -7,17 +7,16 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from config import Config
-from storage.database import init_db
+from tests.isolated_test_case import IsolatedTestCase
 from integrations.terminal import safe_run_command, TerminalExecutionResult
 from core.agy_executor import AgyExecutor
 from core.execution_manager import ExecutionManager
 from integrations.model_manager import ModelManager
 from integrations.usage_monitor import UsageMonitor
 
-class TestExecutionEngine(unittest.TestCase):
+class TestExecutionEngine(IsolatedTestCase):
     def setUp(self):
-        init_db()
+        super().setUp()
         from storage.database import db_session
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()

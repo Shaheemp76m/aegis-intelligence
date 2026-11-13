@@ -12,6 +12,8 @@ from storage.migrations import apply_migrations
 
 # Thread-local storage for sqlite connections
 _local = threading.local()
+_all_connections = set()
+_connections_lock = threading.Lock()
 
 def get_connection(db_path: str = None) -> sqlite3.Connection:
     """Get or create thread-local database connection."""
@@ -28,8 +30,23 @@ def get_connection(db_path: str = None) -> sqlite3.Connection:
         conn.execute("PRAGMA foreign_keys = ON;")
         conn.execute("PRAGMA busy_timeout = 30000;")
         _local.connections[target_path] = conn
+        with _connections_lock:
+            _all_connections.add(conn)
 
     return _local.connections[target_path]
+
+def close_connections() -> None:
+    """Close all open database connections across all threads and clear caches."""
+    with _connections_lock:
+        for conn in list(_all_connections):
+            try:
+                conn.close()
+            except Exception:
+                pass
+        _all_connections.clear()
+
+    if hasattr(_local, "connections"):
+        _local.connections.clear()
 
 @contextmanager
 def db_session(db_path: str = None) -> Generator[sqlite3.Connection, None, None]:

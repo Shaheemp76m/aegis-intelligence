@@ -25,40 +25,20 @@ from http.server import ThreadingHTTPServer
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from config import Config
-from storage.database import init_db
+from tests.isolated_test_case import IsolatedTestCase
 from server import AegisRequestHandler
 
 TEST_PORT = 8798
 TEST_TOKEN = "aegis_test_token_full_suite_abcdef1234567890"
 
-class TestFullApiSuite(unittest.TestCase):
+class TestFullApiSuite(IsolatedTestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temp_dir = tempfile.mkdtemp(prefix="aegis_test_api_")
-        cls.data_dir = Path(cls.temp_dir) / "data"
-        cls.data_dir.mkdir(parents=True, exist_ok=True)
-        cls.db_path = cls.data_dir / "aegis.db"
-
-        # Override Config paths
-        cls.orig_host = Config.HOST
-        cls.orig_port = Config.PORT
-        cls.orig_token = Config.API_TOKEN
-        cls.orig_data_dir = Config.DATA_DIR
-        cls.orig_db_path = Config.DB_PATH
-
+        super().setUpClass()
         Config.HOST = "127.0.0.1"
         Config.PORT = TEST_PORT
         Config.API_TOKEN = TEST_TOKEN
-        Config.DATA_DIR = cls.data_dir
-        Config.DB_PATH = cls.db_path
-        Config.TOKEN_FILE = cls.data_dir / ".api_token"
-        Config.LOGS_DIR = cls.data_dir / "logs"
-        Config.REPORTS_DIR = cls.data_dir / "reports"
-        Config.MEMORY_DIR = cls.data_dir / "memory"
-        Config.PROJECTS_DIR = cls.data_dir / "projects"
-        Config.ensure_directories()
-
-        init_db(str(cls.db_path))
+        Config.TOKEN_FILE.write_text(TEST_TOKEN, encoding="utf-8")
 
         cls.server = ThreadingHTTPServer((Config.HOST, TEST_PORT), AegisRequestHandler)
         cls.server_thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
@@ -66,7 +46,7 @@ class TestFullApiSuite(unittest.TestCase):
         cls.base_url = f"http://127.0.0.1:{TEST_PORT}"
 
         # Create temporary sample project directory
-        cls.sample_project_dir = Path(cls.temp_dir) / "sample_app"
+        cls.sample_project_dir = Path(cls._temp_dir) / "sample_app"
         cls.sample_project_dir.mkdir(parents=True, exist_ok=True)
         (cls.sample_project_dir / "package.json").write_text(
             json.dumps({"name": "test-app", "dependencies": {"react": "^18.0.0", "typescript": "^5.0.0"}}),
@@ -78,12 +58,7 @@ class TestFullApiSuite(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.shutdown()
         cls.server.server_close()
-        Config.HOST = cls.orig_host
-        Config.PORT = cls.orig_port
-        Config.API_TOKEN = cls.orig_token
-        Config.DATA_DIR = cls.orig_data_dir
-        Config.DB_PATH = cls.orig_db_path
-        shutil.rmtree(cls.temp_dir, ignore_errors=True)
+        super().tearDownClass()
 
     def _req(self, path: str, method: str = "GET", body: dict = None, headers: dict = None):
         """Helper to execute HTTP requests with standard error trapping."""

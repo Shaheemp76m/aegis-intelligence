@@ -7,14 +7,13 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from config import Config
-from storage.database import init_db
+from tests.isolated_test_case import IsolatedTestCase
 from intelligence.project_analyzer import ProjectAnalyzer
 from integrations.filesystem import FilesystemIntegration
 
-class TestProjectIntelligence(unittest.TestCase):
+class TestProjectIntelligence(IsolatedTestCase):
     def setUp(self):
-        init_db()
+        super().setUp()
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.proj_path = self.tmp_dir.name
 

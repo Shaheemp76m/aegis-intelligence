@@ -6,14 +6,14 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from storage.database import init_db
+from tests.isolated_test_case import IsolatedTestCase
 from intelligence.project_memory import ProjectMemory
 from intelligence.task_manager import TaskManager
 from intelligence.bug_tracker import BugTracker
 
-class TestMemoryTasksAndBugs(unittest.TestCase):
+class TestMemoryTasksAndBugs(IsolatedTestCase):
     def setUp(self):
-        init_db()
+        super().setUp()
         self.pid = "proj_test_memory_123"
         from storage.database import db_session
         from datetime import datetime, timezone

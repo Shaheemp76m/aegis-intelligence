@@ -16,17 +16,26 @@ token from data/.api_token:
 import os
 import sys
 import json
+import shutil
+import argparse
+import threading
 import subprocess
 import tempfile
 import urllib.request
 import urllib.error
 from pathlib import Path
+from http.server import ThreadingHTTPServer
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-TOKEN_FILE = BASE_DIR / "data" / ".api_token"
-BASE_URL = "http://127.0.0.1:8765"
+sys.path.insert(0, str(BASE_DIR))
 
+from config import Config
+from storage.database import init_db, close_connections
+from server import AegisRequestHandler
+
+DEFAULT_TEST_PORT = 8795
 results = {}
+current_base_url = f"http://127.0.0.1:{DEFAULT_TEST_PORT}"
 
 def log_result(section: str, test_name: str, passed: bool, details: str = ""):
     results.setdefault(section, []).append({
@@ -38,7 +47,7 @@ def log_result(section: str, test_name: str, passed: bool, details: str = ""):
     print(f"[{status_emoji}] {section} -> {test_name}: {details}")
 
 def make_req(path: str, method: str = "GET", body: dict = None, headers: dict = None):
-    url = f"{BASE_URL}{path}"
+    url = f"{current_base_url}{path}"
     req_headers = headers.copy() if headers is not None else {}
     req_headers.setdefault("Content-Type", "application/json")
 
@@ -55,14 +64,15 @@ def make_req(path: str, method: str = "GET", body: dict = None, headers: dict = 
     except Exception as exc:
         return -1, {"error": str(exc)}
 
-def main():
-    print("=== STARTING AEGIS INTELLIGENCE LIVE SYSTEM VERIFICATION ===")
+def run_verification(base_url: str, token_path: Path):
+    global current_base_url
+    current_base_url = base_url
 
     # 1. Environment & Auth Check
-    if not TOKEN_FILE.is_file():
-        log_result("Auth", "Token File Exists", False, f"File {TOKEN_FILE} missing")
+    if not token_path.is_file():
+        log_result("Auth", "Token File Exists", False, f"File {token_path} missing")
         return
-    token = TOKEN_FILE.read_text().strip()
+    token = token_path.read_text().strip()
     log_result("Auth", "Token File Exists", True, f"Length: {len(token)} chars (0600 mode)")
 
     # Test /health
@@ -274,6 +284,73 @@ def main():
         # Clean up temporary test project from database
         code, resp = make_req(f"/api/v1/projects/{project_id}", method="DELETE", headers=auth_header)
         log_result("Intelligence", "Project Cleanup (Preserving files)", code == 200)
+
+def main():
+    parser = argparse.ArgumentParser(description="Aegis Live System Verification")
+    parser.add_argument("--url", help="Target running Aegis server URL (e.g. http://127.0.0.1:8765)")
+    parser.add_argument("--token-file", help="Path to token file if testing external server")
+    args = parser.parse_args()
+
+    print("=== STARTING AEGIS INTELLIGENCE LIVE SYSTEM VERIFICATION ===")
+
+    if args.url:
+        # User explicitly requested testing an external/running server
+        token_file = Path(args.token_file) if args.token_file else BASE_DIR / "data" / ".api_token"
+        run_verification(args.url, token_file)
+    else:
+        # DEFAULT: Run against an isolated test server with an isolated database
+        print("[ISOLATION] Running verification against ephemeral test instance with isolated database...")
+        temp_dir = tempfile.mkdtemp(prefix="aegis_live_verify_env_")
+        temp_data = Path(temp_dir) / "data"
+        temp_data.mkdir(parents=True, exist_ok=True)
+        temp_db = temp_data / "aegis_verify.db"
+        temp_token_file = temp_data / ".api_token"
+
+        orig_data_dir = Config.DATA_DIR
+        orig_db_path = Config.DB_PATH
+        orig_token_file = Config.TOKEN_FILE
+        orig_token = Config.API_TOKEN
+        orig_port = Config.PORT
+
+        try:
+            close_connections()
+            Config.DATA_DIR = temp_data
+            Config.DB_PATH = temp_db
+            Config.TOKEN_FILE = temp_token_file
+            Config.LOGS_DIR = temp_data / "logs"
+            Config.REPORTS_DIR = temp_data / "reports"
+            Config.MEMORY_DIR = temp_data / "memory"
+            Config.PROJECTS_DIR = temp_data / "projects"
+            Config.PORT = DEFAULT_TEST_PORT
+            Config.API_TOKEN = "aegis_isolated_live_verification_token_48charslong123"
+            os.environ["AEGIS_DB_PATH"] = str(temp_db)
+
+            Config.ensure_directories()
+            temp_token_file.write_text(Config.API_TOKEN, encoding="utf-8")
+            temp_token_file.chmod(0o600)
+
+            init_db(str(temp_db))
+
+            server = ThreadingHTTPServer(("127.0.0.1", DEFAULT_TEST_PORT), AegisRequestHandler)
+            server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+            server_thread.start()
+
+            base_url = f"http://127.0.0.1:{DEFAULT_TEST_PORT}"
+            run_verification(base_url, temp_token_file)
+        finally:
+            server.shutdown()
+            server.server_close()
+            close_connections()
+
+            Config.DATA_DIR = orig_data_dir
+            Config.DB_PATH = orig_db_path
+            Config.TOKEN_FILE = orig_token_file
+            Config.API_TOKEN = orig_token
+            Config.PORT = orig_port
+            os.environ.pop("AEGIS_DB_PATH", None)
+
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            print("[ISOLATION] Ephemeral test instance and database cleaned up successfully.")
 
     # Print summary
     print("\n=== VERIFICATION SUMMARY ===")

@@ -52,6 +52,8 @@ data/*.db-shm
 data/*.db-wal
 data/*.db-journal
 data/aegis.db*
+data/backups/*
+!data/backups/.gitkeep
 
 # Runtime logs, reports, memory cache, and project artifacts
 data/logs/*
