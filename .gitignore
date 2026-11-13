@@ -1,0 +1,72 @@
+# ==========================================
+# Aegis Intelligence - Git Ignore Rules
+# ==========================================
+
+# 1. Environment & Secrets (NEVER commit secrets to GitHub)
+.env
+.env.*
+!.env.example
+*.token
+*.key
+*.pem
+.api_token
+data/.api_token
+
+# 2. Backup & Temporary Files
+*.bak
+*.orig
+*~
+*.swp
+*.swo
+*.tmp
+nohup.out
+
+# 3. Python Bytecode, Caches & Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing & Code Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.cache/
+
+# 4. Aegis Runtime Data & SQLite Databases
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.db-journal
+data/aegis.db*
+
+# Runtime logs, reports, memory cache, and project artifacts
+data/logs/*
+!data/logs/.gitkeep
+data/reports/*
+!data/reports/.gitkeep
+data/memory/*
+!data/memory/.gitkeep
+data/projects/*
+!data/projects/.gitkeep
+
+# 5. IDE, Editor & OS Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace

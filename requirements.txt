@@ -1,0 +1,7 @@
+# Aegis Intelligence - Dependencies
+# Core Aegis is built with zero mandatory external binary dependencies to ensure
+# 100% reliability on Android Termux (Python 3.14 aarch64) without requiring
+# native C/Rust compilers or Docker.
+#
+# All core capabilities (HTTP API, SQLite storage, process execution, Git inspection,
+# AST parsing, security auditing, and test runner) use the Python standard library.
