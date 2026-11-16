@@ -3,7 +3,7 @@
   "info": {
     "title": "Aegis Intelligence API",
     "description": "Antigravity Project Intelligence & Development Control Backend for Termux, n8n, and Gemini",
-    "version": "1.0.0"
+    "version": "2.6.0"
   },
   "servers": [
     {
@@ -562,6 +562,7 @@
     "/api/v1/tools/dispatch": {
       "post": {
         "summary": "Generic Tool Calling Endpoint for n8n AI Agent",
+        "description": "Unified tool dispatcher exposing 52 actions across project management, tasks, bugs, memory, git, filesystem, antigravity execution, approvals, and centralized skills.",
         "requestBody": {
           "required": true,
           "content": {
@@ -573,13 +574,91 @@
                 ],
                 "properties": {
                   "tool": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Canonical tool name or registered alias",
+                    "enum": [
+                      "project_register",
+                      "project_list",
+                      "project_get",
+                      "project_update",
+                      "project_delete",
+                      "project_inspect",
+                      "project_assessment",
+                      "project_set_active",
+                      "project_context",
+                      "project_compare",
+                      "system_health",
+                      "development_health",
+                      "report_generate",
+                      "task_create",
+                      "task_get",
+                      "task_update",
+                      "task_complete",
+                      "task_delete",
+                      "task_list",
+                      "task_summary",
+                      "task_overdue",
+                      "bug_create",
+                      "bug_get",
+                      "bug_update",
+                      "bug_resolve",
+                      "bug_delete",
+                      "bug_list",
+                      "bug_summary",
+                      "memory_record",
+                      "memory_get",
+                      "memory_update",
+                      "memory_delete",
+                      "memory_search",
+                      "git_status",
+                      "git_commits",
+                      "git_diff",
+                      "git_contributors",
+                      "file_read",
+                      "filesystem_inspect",
+                      "filesystem_recent_files",
+                      "agy_models_list",
+                      "agy_model_switch",
+                      "agy_usage_summary",
+                      "agy_execute",
+                      "job_list",
+                      "job_get",
+                      "approval_list",
+                      "approval_get",
+                      "approval_decide",
+                      "audit_logs_get",
+                      "session_get_or_create",
+                      "session_add_turn",
+                      "session_close",
+                      "session_check_dedup",
+                      "session_get",
+                      "session_list",
+                      "execution_progress",
+                      "skill_search",
+                      "skill_select",
+                      "skill_inspect",
+                      "skill_activate"
+                    ]
                   },
                   "params": {
-                    "type": "object"
+                    "type": "object",
+                    "description": "Key-value parameters specific to the selected tool"
                   },
                   "approval_id": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Approval token required for CRITICAL or gated operations"
+                  },
+                  "execution_id": {
+                    "type": "string",
+                    "description": "Unique agent execution identifier for deduplication, progress tracking, and loop prevention"
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "description": "Conversation session identifier linking execution turns"
+                  },
+                  "objective": {
+                    "type": "string",
+                    "description": "Task objective or prompt driving this execution"
                   }
                 }
               }
@@ -640,6 +719,48 @@
         "responses": {
           "200": {
             "description": "Cohesive markdown project briefing"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/assessment": {
+      "get": {
+        "summary": "Comprehensive Technical Assessment of a Registered Project",
+        "description": "Composite read-only assessment aggregating project metadata, git status, recent commits, pending/overdue/blocked tasks, unresolved bugs, persistent memory, recently modified files, and development health.",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sections",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated list of sections to assess: project, git, tasks, bugs, memory, filesystem, health. Defaults to all.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "execute_tests",
+            "in": "query",
+            "required": false,
+            "description": "Whether to trigger non-destructive automated test discovery and execution as part of health assessment. Defaults to false.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Structured project technical assessment"
           },
           "404": {
             "description": "Project not found"
@@ -748,15 +869,34 @@
           {
             "name": "project_id",
             "in": "query",
+            "required": false,
             "schema": {
               "type": "string"
             }
           },
           {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "completed",
+                "failed",
+                "timed_out",
+                "cancelled"
+              ]
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
+            "required": false,
             "schema": {
-              "type": "integer"
+              "type": "integer",
+              "default": 25
             }
           }
         ],
@@ -789,6 +929,753 @@
         "responses": {
           "200": {
             "description": "List of structured audit log events"
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/get-or-create": {
+      "post": {
+        "summary": "Get or Create Conversation Session",
+        "description": "Retrieve an active session or create a new session for a Telegram chat and user. Starts background typing heartbeat if new/continued.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "telegram_chat_id",
+                  "telegram_user_id"
+                ],
+                "properties": {
+                  "telegram_chat_id": {
+                    "type": "string"
+                  },
+                  "telegram_user_id": {
+                    "type": "string"
+                  },
+                  "message_id": {
+                    "type": "string"
+                  },
+                  "user_prompt": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session details including context history and duplication status."
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/add-turn": {
+      "post": {
+        "summary": "Add Conversation Turn to Session",
+        "description": "Persist a user/agent exchange to session context history and stop the background typing indicator heartbeat.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "session_id",
+                  "user_text",
+                  "agent_output"
+                ],
+                "properties": {
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "user_text": {
+                    "type": "string"
+                  },
+                  "agent_output": {
+                    "type": "string"
+                  },
+                  "max_turns": {
+                    "type": "integer",
+                    "default": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated turn count and timestamp."
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/close": {
+      "post": {
+        "summary": "Close Active Conversation Session",
+        "description": "Mark session completed or cancelled and terminate any active typing heartbeats.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "telegram_chat_id": {
+                    "type": "string"
+                  },
+                  "telegram_user_id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "completed",
+                      "cancelled"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Number and IDs of closed sessions."
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/active": {
+      "get": {
+        "summary": "Get Active Session",
+        "description": "Query active conversation session for a given chat and user ID.",
+        "parameters": [
+          {
+            "name": "telegram_chat_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "telegram_user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active session object or null if none active."
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/typing/start": {
+      "post": {
+        "summary": "Start Background Telegram Typing Heartbeat",
+        "description": "Spawn background thread refreshing Telegram typing indicator every 4 seconds.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "session_id",
+                  "chat_id"
+                ],
+                "properties": {
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "chat_id": {
+                    "type": "string"
+                  },
+                  "interval": {
+                    "type": "number",
+                    "default": 4.0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Heartbeat start status."
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/typing/stop": {
+      "post": {
+        "summary": "Stop Background Telegram Typing Heartbeat",
+        "description": "Stop background typing heartbeat for a given session.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "session_id"
+                ],
+                "properties": {
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Heartbeat stop status."
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/start": {
+      "post": {
+        "summary": "Start Asynchronous Background Job",
+        "description": "Spawn a detached background process with continuous log capture, operation timeout, and independent state tracking.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "command"
+                ],
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "description": "Command string or list of argument tokens"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "description": "Target project ID (defaults to active project)"
+                  },
+                  "cwd": {
+                    "type": "string",
+                    "description": "Relative path within project root"
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "description": "Timeout in seconds"
+                  },
+                  "action": {
+                    "type": "string",
+                    "description": "Semantic action type (build, install, test, command)"
+                  },
+                  "telegram_chat_id": {
+                    "type": "string",
+                    "description": "Chat ID to notify asynchronously upon completion"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Job launched successfully with initial running state."
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}/logs": {
+      "get": {
+        "summary": "Retrieve Job Execution Logs",
+        "description": "Stream or tail output lines from the job log file on disk.",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lines",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "tail",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recent stdout/stderr log output."
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}/cancel": {
+      "post": {
+        "summary": "Cancel Running Background Job",
+        "description": "Terminate process group and mark job status cancelled.",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job cancellation outcome."
+          }
+        }
+      }
+    },
+    "/api/v1/agy/instances": {
+      "get": {
+        "summary": "Discover live Antigravity instances",
+        "description": "Discovers active Antigravity CLI instances via /proc and merges with historical records.",
+        "tags": [
+          "Antigravity Instances"
+        ],
+        "parameters": [
+          {
+            "name": "include_historical",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of Antigravity instances"
+          }
+        }
+      }
+    },
+    "/api/v1/agy/instances/{instance_id}": {
+      "get": {
+        "summary": "Get Antigravity instance status",
+        "description": "Retrieves detailed status for an Antigravity instance by PID or ID.",
+        "tags": [
+          "Antigravity Instances"
+        ],
+        "parameters": [
+          {
+            "name": "instance_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instance details"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/api/v1/agy/instances/start": {
+      "post": {
+        "summary": "Start Antigravity background instance",
+        "description": "Launches a detached Antigravity instance in a registered project directory.",
+        "tags": [
+          "Antigravity Instances"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project_id": {
+                    "type": "string"
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "agent": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "accept-edits",
+                      "auto",
+                      "plan"
+                    ]
+                  },
+                  "conversation_id": {
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "type": "integer"
+                  },
+                  "telegram_chat_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Instance started"
+          }
+        }
+      }
+    },
+    "/api/v1/agy/instances/{instance_id}/stop": {
+      "post": {
+        "summary": "Stop running Antigravity instance",
+        "description": "Terminates an active Antigravity process group safely.",
+        "tags": [
+          "Antigravity Instances"
+        ],
+        "parameters": [
+          {
+            "name": "instance_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instance terminated"
+          }
+        }
+      }
+    },
+    "/api/v1/agy/instances/{instance_id}/output": {
+      "get": {
+        "summary": "Get Antigravity instance log output",
+        "description": "Streams or tails output from the active log file.",
+        "tags": [
+          "Antigravity Instances"
+        ],
+        "parameters": [
+          {
+            "name": "instance_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lines",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "tail",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instance output logs"
+          }
+        }
+      }
+    },
+    "/api/v1/agy/tasks/submit": {
+      "post": {
+        "summary": "Submit development task to Antigravity",
+        "description": "Submits a task prompt to Antigravity with optional conversation continuation.",
+        "tags": [
+          "Antigravity Tasks"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "prompt"
+                ],
+                "properties": {
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string"
+                  },
+                  "conversation_id": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "agent": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "type": "integer"
+                  },
+                  "telegram_chat_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Task submitted"
+          }
+        }
+      }
+    },
+    "/api/v1/agy/tasks/{task_id}": {
+      "get": {
+        "summary": "Get Antigravity task execution status",
+        "description": "Retrieves progress and results of a submitted Antigravity task.",
+        "tags": [
+          "Antigravity Tasks"
+        ],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task status and results"
+          }
+        }
+      }
+    },
+    "/api/v1/skills/search": {
+      "get": {
+        "summary": "Search Skill Catalog",
+        "description": "Searches the lightweight catalog of 307 skills by query, category, and target agent.",
+        "tags": [
+          "Skills"
+        ],
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of matching skills"
+          }
+        }
+      },
+      "post": {
+        "summary": "Search Skill Catalog (POST)",
+        "description": "Searches the skill catalog via POST body.",
+        "tags": [
+          "Skills"
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": { "type": "string" },
+                  "category": { "type": "string" },
+                  "agent_id": { "type": "string" },
+                  "limit": { "type": "integer", "default": 10 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "List of matching skills"
+          }
+        }
+      }
+    },
+    "/api/v1/skills/select": {
+      "post": {
+        "summary": "Intelligently Select Skills for Task",
+        "description": "Evaluates task description using 7-factor criteria to select smallest set of vetted skills (1-3) with context efficiency.",
+        "tags": [
+          "Skills"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["task"],
+                "properties": {
+                  "task": { "type": "string", "description": "Task description" },
+                  "agent_id": { "type": "string", "default": "aegis-orchestrator" },
+                  "tech_stack": { "type": "array", "items": { "type": "string" } },
+                  "max_skills": { "type": "integer", "default": 3 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Selected skills and context metrics"
+          }
+        }
+      }
+    },
+    "/api/v1/skills/inspect/{skill_id}": {
+      "get": {
+        "summary": "Inspect Skill Instructions & Security Audit",
+        "description": "Inspects a skill instruction file, performs static security analysis, and verifies safety.",
+        "tags": [
+          "Skills"
+        ],
+        "parameters": [
+          {
+            "name": "skill_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Skill instructions preview and security audit results"
+          }
+        }
+      }
+    },
+    "/api/v1/skills/activate": {
+      "post": {
+        "summary": "Activate Skill in Project Workspace",
+        "description": "Copies vetted skill instructions into target project workspace (.agents/skills/) on demand.",
+        "tags": [
+          "Skills"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["skill_id"],
+                "properties": {
+                  "skill_id": { "type": "string" },
+                  "workspace_path": { "type": "string" },
+                  "project_id": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Activation status"
           }
         }
       }

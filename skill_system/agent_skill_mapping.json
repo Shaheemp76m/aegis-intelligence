@@ -1,0 +1,260 @@
+{
+  "version": "2.0.0",
+  "description": "Agent-to-skill role affinities, approved categories, curated skills, and boundary rules",
+  "agents": {
+    "aegis-orchestrator": {
+      "name": "CEO",
+      "role": "Central Orchestrator & Strategy",
+      "primary_categories": [
+        "workflow",
+        "architecture",
+        "business",
+        "general"
+      ],
+      "functional_domains": [
+        "Agent orchestration",
+        "Planning",
+        "Context management",
+        "Workflow automation"
+      ],
+      "approved_bundles": [
+        "core-dev"
+      ],
+      "curated_skills": [
+        "agent-orchestration-multi-agent-optimize",
+        "agent-orchestration-improve-agent",
+        "full-stack-orchestration-full-stack-feature",
+        "conductor-implement",
+        "conductor-new-track",
+        "context-management-context-save",
+        "context-management-context-restore",
+        "c4-architecture-c4-architecture"
+      ],
+      "max_active_skills_per_turn": 3,
+      "delegation_rule": "CEO evaluates and assigns skills to subordinate agents; does not load implementation skills into its own prompt."
+    },
+    "aegis-cto": {
+      "name": "CTO",
+      "role": "Software Engineering Director",
+      "primary_categories": [
+        "architecture",
+        "development",
+        "data-ai"
+      ],
+      "functional_domains": [
+        "Programming languages",
+        "Frameworks",
+        "Architecture",
+        "API development",
+        "Database design",
+        "Code review"
+      ],
+      "approved_bundles": [
+        "core-dev",
+        "data-core"
+      ],
+      "curated_skills": [
+        "backend-architect",
+        "architecture-patterns",
+        "api-design-principles",
+        "database-architect",
+        "c4-architecture-c4-architecture",
+        "code-review-excellence",
+        "python-pro",
+        "typescript-pro",
+        "fastapi-pro",
+        "database-optimizer",
+        "sql-pro"
+      ],
+      "max_active_skills_per_turn": 3,
+      "delegation_rule": "Designs architectural specifications; requests implementation from Repair Engineer."
+    },
+    "aegis-bug-hunter": {
+      "name": "Bug Hunter",
+      "role": "Lead Defect Diagnostics",
+      "primary_categories": [
+        "development",
+        "workflow"
+      ],
+      "functional_domains": [
+        "Debugging",
+        "Static analysis",
+        "Error investigation",
+        "Performance diagnostics"
+      ],
+      "approved_bundles": [
+        "core-dev"
+      ],
+      "curated_skills": [
+        "debugger",
+        "debugging-toolkit-smart-debug",
+        "distributed-debugging-debug-trace",
+        "error-debugging-error-analysis",
+        "error-handling-patterns",
+        "application-performance-performance-optimization"
+      ],
+      "forbidden_categories": [
+        "code-modification",
+        "refactoring-application",
+        "business"
+      ],
+      "max_active_skills_per_turn": 2,
+      "delegation_rule": "Diagnostic only. Strictly prohibited from using skills to modify production application code."
+    },
+    "aegis-repair-engineer": {
+      "name": "Repair Engineer",
+      "role": "Senior Remediation Engineer",
+      "primary_categories": [
+        "development"
+      ],
+      "functional_domains": [
+        "Language-specific development",
+        "Refactoring",
+        "Framework troubleshooting",
+        "Build repair"
+      ],
+      "approved_bundles": [
+        "core-dev"
+      ],
+      "curated_skills": [
+        "code-refactoring-refactor-clean",
+        "codebase-cleanup-tech-debt",
+        "python-pro",
+        "fastapi-pro",
+        "typescript-pro",
+        "react-modernization",
+        "nodejs-backend-patterns",
+        "devops-troubleshooter",
+        "uv-package-manager"
+      ],
+      "max_active_skills_per_turn": 3,
+      "delegation_rule": "Applies minimal atomic patches and regression tests. Prohibited from resolving defects in database."
+    },
+    "aegis-researcher": {
+      "name": "Research Intelligence",
+      "role": "Principal Technology Analyst",
+      "primary_categories": [
+        "general",
+        "business",
+        "data-ai",
+        "development"
+      ],
+      "functional_domains": [
+        "Web research",
+        "Documentation research",
+        "GitHub research",
+        "Technology comparison",
+        "Technical trend analysis"
+      ],
+      "approved_bundles": [
+        "ai-core",
+        "core-dev"
+      ],
+      "curated_skills": [
+        "ai-engineer",
+        "llm-evaluation",
+        "prompt-engineering-patterns",
+        "dependency-management-deps-audit",
+        "code-documentation-code-explain",
+        "documentation-generation-doc-generate"
+      ],
+      "max_active_skills_per_turn": 2,
+      "delegation_rule": "Evidence gathering only. Zero fabrication policy."
+    },
+    "aegis-ciso": {
+      "name": "CISO",
+      "role": "Cybersecurity Director",
+      "primary_categories": [
+        "security"
+      ],
+      "functional_domains": [
+        "Security auditing",
+        "Vulnerability analysis",
+        "Secure coding",
+        "Authentication",
+        "Threat modeling"
+      ],
+      "approved_bundles": [
+        "security-core"
+      ],
+      "curated_skills": [
+        "security-auditor",
+        "threat-modeling-expert",
+        "auth-implementation-patterns",
+        "sast-configuration",
+        "secrets-management",
+        "backend-security-coder",
+        "frontend-security-coder",
+        "security-scanning-security-dependencies",
+        "security-scanning-security-hardening"
+      ],
+      "forbidden_categories": [
+        "business"
+      ],
+      "max_active_skills_per_turn": 3,
+      "delegation_rule": "Defensive security and threat modeling. Holds absolute Veto authority."
+    },
+    "aegis-devops": {
+      "name": "DevOps/SRE",
+      "role": "Principal Operations Engineer",
+      "primary_categories": [
+        "infrastructure",
+        "workflow"
+      ],
+      "functional_domains": [
+        "Linux",
+        "Termux-compatible operations",
+        "Docker",
+        "CI/CD",
+        "Git",
+        "Monitoring",
+        "Deployment"
+      ],
+      "approved_bundles": [
+        "ops-core",
+        "core-dev"
+      ],
+      "curated_skills": [
+        "bash-pro",
+        "git-advanced-workflows",
+        "deployment-engineer",
+        "devops-troubleshooter",
+        "incident-responder",
+        "observability-engineer",
+        "prometheus-configuration",
+        "cicd-automation-workflow-automate"
+      ],
+      "max_active_skills_per_turn": 3,
+      "delegation_rule": "Runtime operations, background builds, Antigravity instance lifecycles, and host health."
+    },
+    "aegis-qa": {
+      "name": "QA/Release Manager",
+      "role": "Quality Assurance Director",
+      "primary_categories": [
+        "testing",
+        "development"
+      ],
+      "functional_domains": [
+        "Automated testing",
+        "Unit testing",
+        "Integration testing",
+        "End-to-end testing",
+        "Performance testing",
+        "Regression testing"
+      ],
+      "approved_bundles": [
+        "core-dev"
+      ],
+      "curated_skills": [
+        "test-automator",
+        "unit-testing-test-generate",
+        "tdd-workflows-tdd-cycle",
+        "e2e-testing-patterns",
+        "api-testing-observability-api-mock",
+        "data-quality-frameworks"
+      ],
+      "max_active_skills_per_turn": 2,
+      "delegation_rule": "Test execution and release gating. Enforces 100% test pass rate. Sole authority to mark bugs resolved."
+    }
+  }
+}

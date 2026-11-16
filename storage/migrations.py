@@ -139,6 +139,73 @@ MIGRATIONS = [
     );
 
     CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_logs (timestamp);
+    """,
+
+    # Migration 2: Telegram Conversation Sessions & Deduplication
+    """
+    CREATE TABLE IF NOT EXISTS conversation_sessions (
+        id TEXT PRIMARY KEY,
+        telegram_chat_id TEXT NOT NULL,
+        telegram_user_id TEXT NOT NULL,
+        project_id TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        context_json TEXT DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_chat_user ON conversation_sessions (telegram_chat_id, telegram_user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_sessions_status ON conversation_sessions (status);
+
+    CREATE TABLE IF NOT EXISTS processed_telegram_messages (
+        message_id TEXT PRIMARY KEY,
+        chat_id TEXT NOT NULL,
+        processed_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_processed_msg_time ON processed_telegram_messages (processed_at);
+    """,
+
+    # Migration 3: Execution Ledger & Action Deduplication
+    """
+    CREATE TABLE IF NOT EXISTS execution_ledger (
+        id TEXT PRIMARY KEY,
+        execution_id TEXT NOT NULL,
+        session_id TEXT,
+        objective TEXT DEFAULT '',
+        action TEXT NOT NULL,
+        normalized_parameters TEXT NOT NULL DEFAULT '{}',
+        action_signature TEXT NOT NULL,
+        execution_status TEXT NOT NULL DEFAULT 'pending',
+        result_json TEXT DEFAULT '{}',
+        error_message TEXT DEFAULT '',
+        attempt_count INTEGER DEFAULT 1,
+        is_read_only INTEGER DEFAULT 1,
+        duration_ms INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES conversation_sessions(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ledger_exec_sig ON execution_ledger (execution_id, action_signature);
+    CREATE INDEX IF NOT EXISTS idx_ledger_exec_id ON execution_ledger (execution_id);
+    CREATE INDEX IF NOT EXISTS idx_ledger_session_id ON execution_ledger (session_id);
+    CREATE INDEX IF NOT EXISTS idx_ledger_status ON execution_ledger (execution_status);
+    """,
+
+    # Migration 4: Asynchronous Background Job Execution & Process Management
+    """
+    ALTER TABLE execution_jobs ADD COLUMN command TEXT DEFAULT '';
+    ALTER TABLE execution_jobs ADD COLUMN working_directory TEXT DEFAULT '';
+    ALTER TABLE execution_jobs ADD COLUMN pid INTEGER;
+    ALTER TABLE execution_jobs ADD COLUMN pgid INTEGER;
+    ALTER TABLE execution_jobs ADD COLUMN log_file TEXT DEFAULT '';
+    ALTER TABLE execution_jobs ADD COLUMN started_at TEXT;
+    ALTER TABLE execution_jobs ADD COLUMN error_message TEXT DEFAULT '';
+    ALTER TABLE execution_jobs ADD COLUMN timeout_seconds INTEGER DEFAULT 1800;
+    ALTER TABLE execution_jobs ADD COLUMN telegram_chat_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_jobs_created ON execution_jobs (created_at);
     """
 ]
 

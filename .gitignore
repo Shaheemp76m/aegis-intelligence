@@ -11,6 +11,7 @@
 *.pem
 .api_token
 data/.api_token
+data/.telegram_token
 
 # 2. Backup & Temporary Files
 *.bak
@@ -64,6 +65,8 @@ data/memory/*
 !data/memory/.gitkeep
 data/projects/*
 !data/projects/.gitkeep
+data/jobs/*
+!data/jobs/.gitkeep
 
 # 5. IDE, Editor & OS Files
 .DS_Store

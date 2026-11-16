@@ -208,6 +208,12 @@ def run_server():
     logger.info("Initializing Aegis database storage...")
     init_db()
     Config.load_api_token()
+    
+    # Recover any running/interrupted jobs from previous session
+    from core.execution_manager import ExecutionManager
+    recovered = ExecutionManager.recover_jobs()
+    if recovered > 0:
+        logger.info(f"Reconciled {recovered} background job(s) from previous daemon session.")
 
     server_address = (Config.HOST, Config.PORT)
     httpd = ThreadingHTTPServer(server_address, AegisRequestHandler)

@@ -49,6 +49,7 @@ class Config:
     REPORTS_DIR: Path = DATA_DIR / "reports"
     MEMORY_DIR: Path = DATA_DIR / "memory"
     PROJECTS_DIR: Path = DATA_DIR / "projects"
+    JOBS_DIR: Path = DATA_DIR / "jobs"
     TOKEN_FILE: Path = DATA_DIR / ".api_token"
 
     # Known placeholder tokens from templates that should not be used in runtime
@@ -70,6 +71,20 @@ class Config:
     # Approvals & Autonomy
     APPROVAL_EXPIRY_SECONDS: int = int(os.getenv("APPROVAL_EXPIRY_SECONDS", "900"))  # 15 min
     MAX_REQUEST_BODY_BYTES: int = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(5 * 1024 * 1024))) # 5MB
+
+    # Execution Ledger & Agent Loop Safeguards
+    LEDGER_MAX_TOTAL_ACTIONS: int = int(os.getenv("AEGIS_LEDGER_MAX_TOTAL_ACTIONS", "15"))
+    LEDGER_MAX_REPEATED_ACTIONS: int = int(os.getenv("AEGIS_LEDGER_MAX_REPEATED_ACTIONS", "2"))
+    LEDGER_MAX_CONSECUTIVE_FAILURES: int = int(os.getenv("AEGIS_LEDGER_MAX_CONSECUTIVE_FAILURES", "3"))
+    LEDGER_MAX_NO_PROGRESS: int = int(os.getenv("AEGIS_LEDGER_MAX_NO_PROGRESS", "3"))
+    LEDGER_EXECUTION_TIMEOUT: int = int(os.getenv("AEGIS_LEDGER_EXECUTION_TIMEOUT", "60"))
+
+    # Background Job Timeouts (Seconds)
+    JOB_TIMEOUT_BUILD: int = int(os.getenv("JOB_TIMEOUT_BUILD", "1800"))       # 30 min default for builds
+    JOB_TIMEOUT_INSTALL: int = int(os.getenv("JOB_TIMEOUT_INSTALL", "1800"))   # 30 min default for package installs
+    JOB_TIMEOUT_TEST: int = int(os.getenv("JOB_TIMEOUT_TEST", "600"))         # 10 min default for tests
+    JOB_TIMEOUT_DEFAULT: int = int(os.getenv("JOB_TIMEOUT_DEFAULT", "300"))    # 5 min default for generic commands
+    JOB_MAX_LOG_SIZE: int = int(os.getenv("JOB_MAX_LOG_SIZE", str(5 * 1024 * 1024))) # 5MB max log retention
 
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
@@ -113,7 +128,7 @@ class Config:
     @classmethod
     def ensure_directories(cls) -> None:
         """Ensure all required runtime data directories exist."""
-        for d in [cls.DATA_DIR, cls.LOGS_DIR, cls.REPORTS_DIR, cls.MEMORY_DIR, cls.PROJECTS_DIR]:
+        for d in [cls.DATA_DIR, cls.LOGS_DIR, cls.REPORTS_DIR, cls.MEMORY_DIR, cls.PROJECTS_DIR, cls.JOBS_DIR]:
             d.mkdir(parents=True, exist_ok=True)
 
 # Ensure data directories exist and resolve API token on module import

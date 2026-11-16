@@ -20,14 +20,18 @@ from intelligence.task_manager import TaskManager
 from intelligence.bug_tracker import BugTracker
 from intelligence.project_memory import ProjectMemory
 from intelligence.report_generator import ReportGenerator
+from intelligence.session_manager import SessionManager
+from integrations.telegram_typing import TelegramTypingService
 from intelligence.context_builder import ContextBuilder
 from integrations.model_manager import ModelManager
 from integrations.usage_monitor import UsageMonitor
 from core.execution_manager import ExecutionManager
+from core.agy_instance_manager import AgyInstanceManager
 from core.tool_router import ToolRouter
 from core.permission_manager import PermissionManager
 from security.approvals import list_approvals, get_approval, decide_approval, ApprovalRequiredException
 from security.audit_log import get_recent_audit_logs
+from skill_system.selector import SkillSelector
 
 class Router:
     """Regex-based HTTP request dispatcher."""
@@ -179,6 +183,22 @@ def handle_project_context(request: dict, kwargs: dict) -> tuple[int, bytes]:
     context_text = ContextBuilder.build_agent_context(pid)
     return success_response({"project_id": pid, "context": context_text}, request["request_id"])
 
+def handle_project_assessment(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    pid = kwargs["project_id"]
+    if not ProjectAnalyzer.get_project(pid):
+        return error_response("NOT_FOUND", f"Project '{pid}' not found.", request["request_id"], 404)
+    q = request.get("query_params", {})
+    raw_sections = q.get("sections", [None])[0]
+    sections = [s.strip() for s in raw_sections.split(",")] if raw_sections else None
+    execute_tests = q.get("execute_tests", ["false"])[0].lower() in ("true", "1", "yes")
+
+    assessment = ProjectAnalyzer.assess_project(
+        project_id=pid,
+        sections=sections,
+        execute_tests=execute_tests
+    )
+    return success_response(assessment, request["request_id"])
+
 router.add_route("GET", "/api/v1/projects", handle_list_projects)
 router.add_route("POST", "/api/v1/projects", handle_create_project)
 router.add_route("POST", "/api/v1/projects/compare", handle_compare_projects)
@@ -189,6 +209,7 @@ router.add_route("POST", "/api/v1/projects/{project_id}/activate", handle_activa
 router.add_route("POST", "/api/v1/projects/{project_id}/inspect", handle_inspect_project)
 router.add_route("GET", "/api/v1/projects/{project_id}/report", handle_project_report)
 router.add_route("GET", "/api/v1/projects/{project_id}/context", handle_project_context)
+router.add_route("GET", "/api/v1/projects/{project_id}/assessment", handle_project_assessment)
 
 # ==================== Tasks ====================
 def handle_list_tasks(request: dict, kwargs: dict) -> tuple[int, bytes]:
@@ -377,11 +398,32 @@ def handle_get_usage(request: dict, kwargs: dict) -> tuple[int, bytes]:
     summary = UsageMonitor.get_usage_summary()
     return success_response(summary, request["request_id"])
 
+def handle_start_job(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    body = validate_dict(request.get("body", {}))
+    cmd = body.get("command") or body.get("cmd")
+    if not cmd:
+        raise ValidationError("Field 'command' is required.")
+    pid = validate_optional_string(body, "project_id")
+    cwd = validate_optional_string(body, "cwd") or validate_optional_string(body, "working_directory")
+    timeout = body.get("timeout")
+    action_type = validate_optional_string(body, "action")
+    chat_id = validate_optional_string(body, "telegram_chat_id")
+    res = ExecutionManager.start_job(
+        command=cmd,
+        project_id=pid or None,
+        cwd=cwd or None,
+        timeout=int(timeout) if timeout else None,
+        action=action_type or None,
+        telegram_chat_id=chat_id or None
+    )
+    return success_response(res, request["request_id"])
+
 def handle_list_jobs(request: dict, kwargs: dict) -> tuple[int, bytes]:
     q = request.get("query_params", {})
     pid = q.get("project_id", [None])[0]
+    status = q.get("status", [None])[0]
     limit = int(q.get("limit", [25])[0])
-    jobs = ExecutionManager.list_jobs(project_id=pid, limit=limit)
+    jobs = ExecutionManager.list_jobs(project_id=pid, status=status, limit=limit)
     return success_response(jobs, request["request_id"])
 
 def handle_get_job(request: dict, kwargs: dict) -> tuple[int, bytes]:
@@ -391,12 +433,115 @@ def handle_get_job(request: dict, kwargs: dict) -> tuple[int, bytes]:
         return error_response("NOT_FOUND", f"Job '{jid}' not found.", request["request_id"], 404)
     return success_response(job, request["request_id"])
 
+def handle_get_job_logs(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    jid = kwargs["job_id"]
+    q = request.get("query_params", {})
+    lines = int(q.get("lines", [50])[0])
+    tail_param = q.get("tail", ["true"])[0]
+    tail = tail_param.lower() in ("true", "1", "yes")
+    res = ExecutionManager.get_job_logs(job_id=jid, lines=lines, tail=tail)
+    return success_response(res, request["request_id"])
+
+def handle_cancel_job(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    jid = kwargs["job_id"]
+    res = ExecutionManager.cancel_job(jid)
+    return success_response(res, request["request_id"])
+
 router.add_route("POST", "/api/v1/agy/execute", handle_execute_agy)
 router.add_route("GET", "/api/v1/agy/models", handle_list_models)
 router.add_route("POST", "/api/v1/agy/model/switch", handle_switch_model)
 router.add_route("GET", "/api/v1/agy/usage", handle_get_usage)
+router.add_route("POST", "/api/v1/jobs/start", handle_start_job)
 router.add_route("GET", "/api/v1/jobs", handle_list_jobs)
 router.add_route("GET", "/api/v1/jobs/{job_id}", handle_get_job)
+router.add_route("GET", "/api/v1/jobs/{job_id}/logs", handle_get_job_logs)
+router.add_route("POST", "/api/v1/jobs/{job_id}/cancel", handle_cancel_job)
+
+# ==================== Antigravity Instances & Tasks ====================
+def handle_list_agy_instances(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    q = request.get("query_params", {})
+    inc_hist = q.get("include_historical", ["true"])[0].lower() not in ("false", "0", "no")
+    limit = int(q.get("limit", [20])[0])
+    instances = AgyInstanceManager.discover_instances(include_historical=inc_hist, limit=limit)
+    return success_response(instances, request["request_id"])
+
+def handle_get_agy_instance(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    iid = kwargs["instance_id"]
+    inst = AgyInstanceManager.get_instance_status(iid)
+    if not inst:
+        return error_response("NOT_FOUND", f"Antigravity instance '{iid}' not found.", request["request_id"], 404)
+    return success_response(inst, request["request_id"])
+
+def handle_start_agy_instance(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    body = validate_dict(request.get("body", {}))
+    pid = validate_optional_string(body, "project_id")
+    prompt = validate_optional_string(body, "prompt")
+    model = validate_optional_string(body, "model")
+    agent = validate_optional_string(body, "agent")
+    mode = validate_optional_string(body, "mode")
+    conv_id = validate_optional_string(body, "conversation_id")
+    timeout = validate_optional_int(body, "timeout")
+    chat_id = validate_optional_string(body, "telegram_chat_id")
+    res = AgyInstanceManager.start_instance(
+        project_id=pid,
+        prompt=prompt,
+        model=model,
+        agent=agent,
+        mode=mode,
+        conversation_id=conv_id,
+        timeout=timeout,
+        telegram_chat_id=chat_id
+    )
+    return success_response(res, request["request_id"], status_code=201)
+
+def handle_stop_agy_instance(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    iid = kwargs["instance_id"]
+    res = AgyInstanceManager.stop_instance(iid)
+    return success_response(res, request["request_id"])
+
+def handle_get_agy_instance_output(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    iid = kwargs["instance_id"]
+    q = request.get("query_params", {})
+    lines = int(q.get("lines", [50])[0])
+    tail_param = q.get("tail", ["true"])[0]
+    tail = tail_param.lower() in ("true", "1", "yes")
+    res = AgyInstanceManager.get_instance_output(iid, lines=lines, tail=tail)
+    return success_response(res, request["request_id"])
+
+def handle_submit_agy_task(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    body = validate_dict(request.get("body", {}))
+    prompt = validate_required_string(body, "prompt")
+    pid = validate_optional_string(body, "project_id")
+    conv_id = validate_optional_string(body, "conversation_id")
+    model = validate_optional_string(body, "model")
+    agent = validate_optional_string(body, "agent")
+    mode = validate_optional_string(body, "mode")
+    timeout = validate_optional_int(body, "timeout")
+    chat_id = validate_optional_string(body, "telegram_chat_id")
+    res = AgyInstanceManager.submit_task(
+        prompt=prompt,
+        project_id=pid,
+        conversation_id=conv_id,
+        model=model,
+        agent=agent,
+        mode=mode,
+        timeout=timeout,
+        telegram_chat_id=chat_id
+    )
+    return success_response(res, request["request_id"], status_code=201)
+
+def handle_get_agy_task_status(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    tid = kwargs["task_id"]
+    res = AgyInstanceManager.get_task_status(tid)
+    return success_response(res, request["request_id"])
+
+router.add_route("GET", "/api/v1/agy/instances", handle_list_agy_instances)
+router.add_route("GET", "/api/v1/agy/instances/{instance_id}", handle_get_agy_instance)
+router.add_route("POST", "/api/v1/agy/instances/start", handle_start_agy_instance)
+router.add_route("POST", "/api/v1/agy/instances/{instance_id}/stop", handle_stop_agy_instance)
+router.add_route("GET", "/api/v1/agy/instances/{instance_id}/output", handle_get_agy_instance_output)
+router.add_route("POST", "/api/v1/agy/tasks/submit", handle_submit_agy_task)
+router.add_route("GET", "/api/v1/agy/tasks/{task_id}", handle_get_agy_task_status)
 
 # ==================== Approvals & Audit ====================
 def handle_list_approvals(request: dict, kwargs: dict) -> tuple[int, bytes]:
@@ -428,16 +573,173 @@ router.add_route("GET", "/api/v1/approvals", handle_list_approvals)
 router.add_route("POST", "/api/v1/approvals/{approval_id}/decision", handle_decide_approval)
 router.add_route("GET", "/api/v1/audit/logs", handle_get_audit_logs)
 
+# ==================== Telegram Conversation Sessions ====================
+def handle_get_or_create_session(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    body = validate_dict(request.get("body", {}))
+    chat_id = validate_required_string(body, "telegram_chat_id")
+    user_id = validate_required_string(body, "telegram_user_id")
+    project_id = validate_optional_string(body, "project_id", default="")
+    message_id = validate_optional_string(body, "message_id", default="")
+    user_prompt = validate_optional_string(body, "user_prompt", default="")
+    res = SessionManager.get_or_create_session(
+        telegram_chat_id=chat_id,
+        telegram_user_id=user_id,
+        project_id=project_id or None,
+        message_id=message_id or None,
+        user_prompt=user_prompt
+    )
+    return success_response(res, request["request_id"])
+
+def handle_add_session_turn(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    body = validate_dict(request.get("body", {}))
+    session_id = validate_required_string(body, "session_id")
+    user_text = validate_required_string(body, "user_text")
+    agent_output = validate_required_string(body, "agent_output")
+    max_turns = int(body.get("max_turns", 15))
+    res = SessionManager.add_turn(
+        session_id=session_id,
+        user_text=user_text,
+        agent_output=agent_output,
+        max_turns=max_turns
+    )
+    return success_response(res, request["request_id"])
+
+def handle_close_session(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    body = validate_dict(request.get("body", {}))
+    session_id = validate_optional_string(body, "session_id", default="")
+    chat_id = validate_optional_string(body, "telegram_chat_id", default="")
+    user_id = validate_optional_string(body, "telegram_user_id", default="")
+    status = validate_optional_string(body, "status", default="completed")
+    reason = validate_optional_string(body, "reason", default="")
+    res = SessionManager.close_session(
+        session_id=session_id or None,
+        telegram_chat_id=chat_id or None,
+        telegram_user_id=user_id or None,
+        status=status,
+        reason=reason
+    )
+    return success_response(res, request["request_id"])
+
+def handle_get_active_session(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    q = request.get("query_params", {})
+    chat_id = (q.get("telegram_chat_id") or q.get("chat_id") or [None])[0]
+    user_id = (q.get("telegram_user_id") or q.get("user_id") or [None])[0]
+    if not chat_id or not user_id:
+        raise ValidationError("telegram_chat_id and telegram_user_id query params are required.")
+    res = SessionManager.get_active_session(chat_id, user_id)
+    return success_response(res, request["request_id"])
+
+def handle_start_typing(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    body = validate_dict(request.get("body", {}))
+    session_id = validate_required_string(body, "session_id")
+    chat_id = validate_required_string(body, "chat_id")
+    interval = float(body.get("interval", 4.0))
+    started = TelegramTypingService.start_heartbeat(session_id, chat_id, interval=interval)
+    return success_response({"session_id": session_id, "started": started}, request["request_id"])
+
+def handle_stop_typing(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    body = validate_dict(request.get("body", {}))
+    session_id = validate_required_string(body, "session_id")
+    stopped = TelegramTypingService.stop_heartbeat(session_id)
+    return success_response({"session_id": session_id, "stopped": stopped}, request["request_id"])
+
+router.add_route("POST", "/api/v1/sessions/get-or-create", handle_get_or_create_session)
+router.add_route("POST", "/api/v1/sessions/add-turn", handle_add_session_turn)
+router.add_route("POST", "/api/v1/sessions/close", handle_close_session)
+router.add_route("GET", "/api/v1/sessions/active", handle_get_active_session)
+router.add_route("POST", "/api/v1/sessions/typing/start", handle_start_typing)
+router.add_route("POST", "/api/v1/sessions/typing/stop", handle_stop_typing)
+
+# ==================== Centralized Skill System ====================
+def handle_search_skills(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    body = request.get("body", {}) or {}
+    qp = request.get("query_params", {})
+    query = body.get("query") or (qp.get("query", [""])[0] if "query" in qp else "")
+    category = body.get("category") or (qp.get("category", [None])[0] if "category" in qp else None)
+    agent_id = body.get("agent_id") or (qp.get("agent_id", [None])[0] if "agent_id" in qp else None)
+    limit = body.get("limit") or (int(qp.get("limit", [10])[0]) if "limit" in qp else 10)
+    results = SkillSelector.search_catalog(query=query, category=category, agent_id=agent_id, limit=int(limit))
+    return success_response(results, request["request_id"])
+
+def handle_select_skills(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    body = validate_dict(request.get("body", {}))
+    task_desc = body.get("task") or body.get("task_description") or body.get("query", "")
+    agent_id = body.get("agent_id", "aegis-orchestrator")
+    tech_stack = body.get("tech_stack")
+    max_skills = int(body.get("max_skills", 3))
+    res = SkillSelector.select_skills_for_task(
+        task_description=task_desc,
+        agent_id=agent_id,
+        project_tech_stack=tech_stack,
+        max_skills=max_skills
+    )
+    return success_response(res, request["request_id"])
+
+def handle_inspect_skill(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    sid = kwargs.get("skill_id")
+    if not sid:
+        raise ValidationError("Parameter 'skill_id' is required.")
+    instructions = SkillSelector.load_skill_instructions(sid)
+    audit = SkillSelector.audit_skill_content(sid, instructions or "")
+    res = {
+        "skill_id": sid,
+        "is_vaulted": instructions is not None,
+        "security_audit": audit,
+        "instructions_preview": instructions[:500] if instructions else None
+    }
+    return success_response(res, request["request_id"])
+
+def handle_activate_skill(request: dict, kwargs: dict) -> tuple[int, bytes]:
+    body = validate_dict(request.get("body", {}))
+    sid = validate_required_string(body, "skill_id")
+    ws_path = body.get("workspace_path") or body.get("path")
+    if not ws_path:
+        pid = body.get("project_id")
+        if pid:
+            proj = ProjectAnalyzer.get_project(pid)
+            if proj:
+                ws_path = proj.get("path")
+    if not ws_path:
+        raise ValidationError("Parameter 'workspace_path' or 'project_id' is required to activate a skill.")
+    res = SkillSelector.activate_for_workspace(sid, ws_path)
+    return success_response(res, request["request_id"])
+
+router.add_route("GET", "/api/v1/skills/search", handle_search_skills)
+router.add_route("POST", "/api/v1/skills/search", handle_search_skills)
+router.add_route("POST", "/api/v1/skills/select", handle_select_skills)
+router.add_route("GET", "/api/v1/skills/inspect/{skill_id}", handle_inspect_skill)
+router.add_route("POST", "/api/v1/skills/activate", handle_activate_skill)
+
 # ==================== Generic Tool Dispatch ====================
 def handle_tool_dispatch(request: dict, kwargs: dict) -> tuple[int, bytes]:
     """Single dispatch endpoint for n8n AI Agent tool calling."""
     body = validate_dict(request.get("body", {}))
-    tool_name = validate_required_string(body, "tool")
-    params = body.get("params", {})
-    approval_id = body.get("approval_id")
+    tool_name = body.get("tool") or body.get("action")
+    if not tool_name or not isinstance(tool_name, str) or not tool_name.strip():
+        raise ValidationError("Field 'tool' (or 'action') is required and must be a non-empty string.")
+    tool_name = tool_name.strip()
+
+    params = body.get("params")
+    if params is None:
+        params = body.get("parameters", {})
+    if not isinstance(params, dict):
+        params = {}
+
+    approval_id = body.get("approval_id") or body.get("approval_token")
+    headers = request.get("headers", {})
+    execution_id = body.get("execution_id") or params.get("execution_id") or headers.get("x-execution-id")
+    session_id = body.get("session_id") or params.get("session_id") or headers.get("x-session-id")
+    objective = body.get("objective") or params.get("objective")
 
     try:
-        res = ToolRouter.dispatch(tool_name, params=params, approval_id=approval_id)
+        res = ToolRouter.dispatch(
+            tool_name,
+            params=params,
+            approval_id=approval_id,
+            execution_id=execution_id,
+            session_id=session_id,
+            objective=objective
+        )
         return success_response(res, request["request_id"])
     except ApprovalRequiredException as are:
         return error_response(

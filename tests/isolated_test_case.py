@@ -36,6 +36,7 @@ class IsolatedTestCase(unittest.TestCase):
         cls._orig_reports_dir = Config.REPORTS_DIR
         cls._orig_memory_dir = Config.MEMORY_DIR
         cls._orig_projects_dir = Config.PROJECTS_DIR
+        cls._orig_jobs_dir = Config.JOBS_DIR
         cls._orig_token = Config.API_TOKEN
 
         # 3. Create unique isolated temporary directory for this test class
@@ -52,6 +53,7 @@ class IsolatedTestCase(unittest.TestCase):
         Config.REPORTS_DIR = cls._temp_data_dir / "reports"
         Config.MEMORY_DIR = cls._temp_data_dir / "memory"
         Config.PROJECTS_DIR = cls._temp_data_dir / "projects"
+        Config.JOBS_DIR = cls._temp_data_dir / "jobs"
         Config.API_TOKEN = "aegis_test_isolated_token_secret_0987654321"
 
         # Update environment variable so any subroutines re-checking env see the isolated DB
@@ -90,6 +92,7 @@ class IsolatedTestCase(unittest.TestCase):
         Config.REPORTS_DIR = cls._orig_reports_dir
         Config.MEMORY_DIR = cls._orig_memory_dir
         Config.PROJECTS_DIR = cls._orig_projects_dir
+        Config.JOBS_DIR = cls._orig_jobs_dir
         Config.API_TOKEN = cls._orig_token
 
         # 4. Delete the temporary directory completely
